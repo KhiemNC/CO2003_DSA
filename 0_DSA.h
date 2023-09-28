@@ -35,7 +35,7 @@ public:
 // Array implementation of list
 #define ARRLIST_BLOCK_SIZE 32
 template <class T>
-class ArrList : public List<T> {
+class ArrList : virtual public List<T> {
 protected:
     int nE, cap; // number elements, capacity
     T *pD; // point data
@@ -124,7 +124,7 @@ public:
 
 // Singly Linked List implementation
 template <class T>
-class L1List : public List<T> {
+class L1List : virtual public List<T> {
 protected:
     struct Node {
         T data;
@@ -236,7 +236,7 @@ public:
     }
 	T&          operator[](int idx) {
         Node *p;
-        for (*p = pHead; p && idx; idx--, p = p->pNext); // if (p->data == val);
+        for (p = pHead; p && idx; idx--, p = p->pNext); // if (p->data == val);
         return p->data;
     }
 	void        traverse(std::function<void (T&)> op) {
@@ -281,11 +281,12 @@ Da ke thua
 */
 // stack interface
 template <class T>
-class Stack {
+class Stack : virtual protected List<T> {
 public:
 	virtual int         getSize() = 0;
 	virtual bool        isEmpty() = 0;
 	virtual void        clear() = 0;
+	virtual List<T>*    clone() = 0; 
 	
 	virtual void        push(const T & val) = 0;
 	virtual void        pop() = 0;
@@ -294,13 +295,133 @@ public:
 
 template <typename T>
 class ArrStack : protected ArrList<T>, public Stack<T> {
+public:
+    ArrStack() {}
+    ArrStack(const ArrStack & s) : ArrList<T>(s) {} // copy instructor
+
     int         getSize() { return ArrList<T>::getSize(); }
 	bool        isEmpty() { return ArrList<T>:: isEmpty(); }
 	void        clear() { return ArrList<T>::clear(); }
-	
+	List<T>*    clone() { return new ArrStack(*this); }
+    // conflict about signature of a function
+	// khong the stack<T> *p = new arrstack<T>
+    // de giai quyet thi stack ke thua list
+    // hai nhanh ke thua bi trung lap, mot nhanh arrlist da hien thuc tat ca phuong thuc cua list, nhanh stack van con virtual do do arrstack van con virtual
+    // de giai quyet thi stack va arrlist ke thua virtual list
+
 	void        push(const T & val) { ArrList<T>::insert(val, this->nE); }
 	void        pop() { this->remove(this->nE - 1); }
 	T&          top() { return (*this)[this->nE - 1]; }
 };
+
+template <typename T>
+class L1Stack : protected L1List<T>, public Stack<T> {
+public:
+    L1Stack() {}
+    L1Stack(const L1Stack & s) : L1List<T>(s) {} // copy instructor
+
+    int         getSize() { return L1List<T>::getSize(); }
+	bool        isEmpty() { return L1List<T>::isEmpty(); }
+	void        clear() { L1List<T>::clear(); }
+	List<T>*    clone() { return new L1Stack<T>(*this);}
+	
+	void        push(const T & val) { L1List<T>::insert(val, 0); }
+	void        pop() { L1List<T>::remove(0);}
+	T&          top() { return this->pHead->data; }
+};
+
+// queue interface
+template <class T>
+class Queue : virtual protected List<T> {
+public:
+	virtual int         getSize() = 0;
+	virtual bool        isEmpty() = 0;
+	virtual void        clear() = 0;
+	virtual List<T>*    clone() = 0; 
+	
+	virtual void        enqueue(const T & val) = 0;
+	virtual void        dequeue() = 0;
+	virtual T&          first() = 0;
+};
+
+template <typename T>
+class ArrQueue : protected ArrList<T>, public Queue<T> {
+protected:
+    int firstIdx, lastIdx;
+public:
+    ArrQueue() : firstIdx(0), lastIdx(0) {}
+    ArrQueue(const ArrQueue & s) : firstIdx(0), lastIdx(0) {
+        this->nE = s.nE;
+        resize(this->nE);
+        for (; lastIdx < this->nE; lastIdx++) {
+            this->pD[lastIdx] = s.pD[(s.firstIdx + lastIdx) % s.cap];
+        }
+    } // copy instructor and align data
+
+    void        resize(int N) {
+        int newCap = (N + ARRLIST_BLOCK_SIZE - 1) / ARRLIST_BLOCK_SIZE * ARRLIST_BLOCK_SIZE;
+        T *pND = new T[newCap];
+        if (this->nE > newCap) this->nE = newCap;
+        for (int i = 0; i < this->nE; i++) pND[i] = std::move(this->pD[(firstIdx + i) % this->cap]);
+        firstIdx = 0;
+        lastIdx = this->nE;
+        delete[] this->pD;
+        this->pD = pND;
+        this->cap = newCap;
+    }
+
+    int         getSize() { return ArrList<T>::getSize(); }
+	bool        isEmpty() { return ArrList<T>:: isEmpty(); }
+	void        clear() { return ArrList<T>::clear(); }
+	List<T>*    clone() { return new ArrQueue(*this); }
+
+	void        enqueue(const T & val) {
+        if (this->nE == this->cap) resize(this->nE + 1);
+        this->pD[this->lastIdx++] = val;
+        this->lastIdx = this->lastIdx % this->cap;
+        this->nE++;
+    }
+	void        dequeue() {
+        if (!this->nE) return;
+        this->firstIdx = (this->firstIdx + 1) % this->cap;
+        this->nE--;
+    }
+	T&          first() { return this->pD[this->firstIdx]; }
+};
+
+template <typename T>
+class L1Queue : protected L1List<T>, public Queue<T> {
+protected:
+    typedef typename L1List<T>::Node Node;
+    Node *pLast; // ~ pTail
+public:
+    L1Queue() : pLast(nullptr) {}
+    L1Queue(const L1Queue & s) : L1List<T>(s) {
+        pLast = this->pHead;
+        while (pLast->pNext) pLast = pLast->pNext;
+    } // copy instructor and align data
+
+    int         getSize() { return L1List<T>::getSize(); }
+	bool        isEmpty() { return L1List<T>:: isEmpty(); }
+	void        clear() { L1List<T>::clear(); pLast = nullptr; }
+	List<T>*    clone() { return new L1Queue(*this); }
+
+	void        enqueue(const T & val) {
+        if (pLast) {
+            pLast = (pLast->pNext = new Node(val));
+        }
+        else {
+            this->pHead = pLast = new Node(val);
+        }
+        this->nE++;
+    }
+	void        dequeue() {
+        if (L1List<T>::isEmpty()) return;
+        L1List<T>::remove(0);
+        if (!this->pHead) pLast = nullptr;
+    }
+	T&          first() { return this->pHead->data; }
+};
+
 
 #endif //_0_DSA_H_
